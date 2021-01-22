@@ -20,13 +20,15 @@ import time
 
 
 class CrawlerBase:
-    def __init__(self, driver_path, url, headless=False, wait_sec=2):
+    def __init__(self, driver_path, url, headless=False, proxy=None, proxy_auth=None, wait_sec=2):
+        option = Options()
         if headless:
-            option = Options()
             option.add_argument("--headless")
-            self.driver = webdriver.Chrome(executable_path=driver_path, options=option)
-        else:
-            self.driver = webdriver.Chrome(executable_path=driver_path)
+        if proxy is not None:
+            option.add_argument(f"--proxy-server=http://{proxy}")
+            if proxy_auth is not None:
+                option.add_argument(f"--proxy-auth={proxy_auth}")
+        self.driver = webdriver.Chrome(executable_path=driver_path, options=option)
         self.url = url
         self.wait_sec = wait_sec
 
@@ -70,9 +72,9 @@ class CrawlerBase:
 
 
 class PhysioBankCrawlerBase(CrawlerBase):
-    def __init__(self, driver_path='F:/lib/chromedriver.exe', url='https://archive.physionet.org/cgi-bin/atm/ATM',
-                 headless=False):
-        super(PhysioBankCrawlerBase, self).__init__(driver_path, url, headless)
+    def __init__(self, driver_path='/driver-dir/chromedriver.exe', url='https://archive.physionet.org/cgi-bin/atm/ATM',
+                 headless=False, proxy=None, proxy_auth=None):
+        super().__init__(driver_path, url, headless, proxy, proxy_auth)
         self.open()
         # Optional values
         self.dataset_list = self.get_selectbox_values(name="database")
@@ -167,9 +169,9 @@ class PhysioBankCrawlerBase(CrawlerBase):
 
 
 class PhysioBankCrawler(PhysioBankCrawlerBase):
-    def __init__(self, driver_path='F:/lib/chromedriver.exe', url='https://archive.physionet.org/cgi-bin/atm/ATM',
-                 dataset=None, headless=False, data_type="image", save_dir="."):
-        super(PhysioBankCrawler, self).__init__(driver_path, url, headless)
+    def __init__(self, driver_path='/driver-dir/chromedriver.exe', url='https://archive.physionet.org/cgi-bin/atm/ATM',
+                 dataset=None, headless=False, proxy=None, proxy_auth=None, data_type="image", save_dir="."):
+        super().__init__(driver_path, url, headless, proxy, proxy_auth)
 
         self.__signal_list = None
         self.__record_list = None
@@ -255,8 +257,10 @@ class PhysioBankCrawler(PhysioBankCrawlerBase):
             os.makedirs(save_dir, exist_ok=True)
 
         self.move_first_page()
+        skip_flag = False
         for record in self.record_list[start_record_idx:]:
-            if record != self.get_selected_record():
+            if not skip_flag and record != self.get_selected_record():
+                print(record, self.get_selected_record())
                 raise Exception("Error: record is different.")
             data_idx = 1
             while(True):
@@ -264,17 +268,25 @@ class PhysioBankCrawler(PhysioBankCrawlerBase):
                     img_file_name = f"{record}_{self.signal}_{data_idx}.png".replace(r"/", r"_")
                     img_file_path = f"{save_dir}/{img_file_name}"
                     if os.path.exists(img_file_path):
+                        skip_flag = True
                         break
+                    elif skip_flag:
+                        skip_flag = False
+                        self.set_record(record)
+                        time.sleep(self.wait_sec)
+                        self.move_first_page()
+                        time.sleep(self.wait_sec)
                     self.save_chart_img(img_file_path)
                     time.sleep(self.wait_sec)
                     data_idx += 1
                     if not self.move_next_page():
                         break
             # 次のrecord
-            self.move_next_record()
-            time.sleep(self.wait_sec)
-            self.move_first_page()
-            time.sleep(self.wait_sec)
+            if not skip_flag:
+                self.move_next_record()
+                time.sleep(self.wait_sec)
+                self.move_first_page()
+                time.sleep(self.wait_sec)
 
     # crawling all singnal
     def crawling_all_signal_record(self, start_record=None):
