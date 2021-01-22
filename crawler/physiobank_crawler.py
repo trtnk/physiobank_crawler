@@ -28,6 +28,17 @@ class CrawlerBase:
             option.add_argument(f"--proxy-server=http://{proxy}")
             if proxy_auth is not None:
                 option.add_argument(f"--proxy-auth={proxy_auth}")
+                self.proxy_dict = {
+                    "http": f"http://{proxy_auth}@{proxy}/",
+                    "https": f"http://{proxy_auth}@{proxy}/"
+                }
+            else:
+                self.proxy_dict = {
+                    "http": f"http://{proxy}/",
+                    "https": f"http://{proxy}/"
+                }
+        else:
+            self.proxy_dict = None
         self.driver = webdriver.Chrome(executable_path=driver_path, options=option)
         self.url = url
         self.wait_sec = wait_sec
@@ -115,7 +126,10 @@ class PhysioBankCrawlerBase(CrawlerBase):
 
         #画像のURLから画像を保存する。
         else:
-            res = requests.get(img_src, stream=True)
+            if self.proxy_dict is None:
+                res = requests.get(img_src, stream=True)
+            else:
+                res = requests.get(img_src, stream=True, proxies=self.proxy_dict)
             with open(file_save_path, "wb") as f:
                 shutil.copyfileobj(res.raw, f)
 
